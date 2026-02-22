@@ -1,8 +1,0 @@
-{
-  "active": true,
-  "started_at": "2026-02-22T01:22:25.305Z",
-  "original_prompt": "hy 처럼 쉘로 실행하는 명령을 만드는건 어때? 그리고 ultrawork 처럼 한방에 자연스럽게 진행되는 명령도 추가하면 좋겠다.",
-  "session_id": "b0162205-73c8-4a13-96d5-9ae4c33a9b94",
-  "reinforcement_count": 50,
-  "last_checked_at": "2026-02-22T01:30:16.429Z"
-}
