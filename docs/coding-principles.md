@@ -119,16 +119,58 @@ Adapter(inbound) → Port(inbound) → Application Service → Domain Service
 - **Application Service**: Implements an inbound port. Orchestrates the use case by calling domain services for business logic and outbound ports for external dependencies. Contains no business rules itself
 - **Domain Service**: Pure business logic. No knowledge of ports, adapters, or infrastructure
 
+### Who Calls Outbound Ports?
+
+**Application Service calls outbound ports. Domain Service never does.**
+
+```
+// Outbound Port (application/ports/outbound/)
+interface OrderRepository {
+  save(order: Order): void
+  findById(id: string): Order
+}
+
+// Domain Service (domain/services/) — pure logic, no port dependency
+class OrderPricingService {
+  calculateTotal(order: Order, discount: Discount): Money {
+    return order.items.sum() * discount.rate
+  }
+}
+
+// Application Service (application/services/) — orchestrates everything
+class CreateOrderService implements CreateOrderUseCase {
+  constructor(
+    private orderRepo: OrderRepository,        // outbound port
+    private pricingService: OrderPricingService // domain service
+  )
+
+  execute(request) {
+    const order = Order.create(request)
+    const total = this.pricingService.calculateTotal(order, discount)
+    order.setTotal(total)
+    this.orderRepo.save(order)  // application service calls the outbound port
+  }
+}
+```
+
+**Why domain services must not call outbound ports:**
+- Domain service importing a port means domain depends on the application layer — breaks inward dependency direction
+- Domain tests would need port mocks — no longer "pure business logic"
+- If domain logic needs external data, the application service fetches it first and passes it as an argument
+
 ### Checklist
 - [ ] Domain module has zero infrastructure imports
+- [ ] Domain services have no port dependencies — they receive all data as arguments
 - [ ] Every external dependency is behind a Port interface
+- [ ] Only application services call outbound ports, never domain services
 - [ ] Adapters implement Port interfaces, not the other way around
 - [ ] Use cases orchestrate domain objects, not infrastructure directly
 - [ ] Domain can be tested with in-memory fakes (no Docker, no real DB)
 
 ### Anti-Patterns
 - **Domain-Infrastructure Coupling**: Domain model importing `sqlalchemy`, `requests`, `express`, etc.
+- **Domain-Port Coupling**: Domain service injecting an outbound port (e.g., `OrderRepository`) — this belongs in the application service
 - **Adapter Leak**: Business logic living inside a REST controller or DB repository
-- **Missing Port**: Domain calling an external service directly without an interface boundary
-- **Outward Dependency**: Domain module depending on an adapter module
+- **Missing Port**: Calling an external service directly without an interface boundary
+- **Outward Dependency**: Domain module depending on an adapter or application module
 - **Fat Use Case**: Use case that contains business rules instead of delegating to domain services
