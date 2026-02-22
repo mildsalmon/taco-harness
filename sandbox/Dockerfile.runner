@@ -1,0 +1,9 @@
+FROM alpine:3.20
+
+RUN addgroup -g 10001 worker \
+    && adduser -D -u 10001 -G worker worker
+
+USER worker
+WORKDIR /workspace
+
+CMD ["sh", "-lc", "while true; do sleep 3600; done"]

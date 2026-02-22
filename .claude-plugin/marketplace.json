@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "mildsalmon",
+  "description": "Personal dev harness: brainstorm → specify → plan → review → implement → review → learn",
+  "owner": {
+    "name": "mildsalmon"
+  },
+  "plugins": [
+    {
+      "name": "taco",
+      "description": "Personal dev harness: brainstorm → specify → plan → review → implement → review → learn",
+      "version": "0.1.0",
+      "author": {
+        "name": "mildsalmon"
+      },
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

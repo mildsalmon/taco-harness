@@ -1,0 +1,24 @@
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    init: true
+    user: "10001:10001"
+    working_dir: /workspace
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    network_mode: none
+    command: ["sh", "-lc", "while true; do sleep 3600; done"]
+    volumes:
+      - workspace:/workspace
+
+volumes:
+  workspace:
+    name: taco_claude_workspace

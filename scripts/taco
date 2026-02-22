@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# taco — Shell entry point for taco-claude pipeline
+# Install: ./scripts/install-taco.sh
+# Usage:   taco [command] [args]
+#          taco           (interactive mode)
+set -euo pipefail
+
+# Resolve taco-claude root (where this script lives)
+TACO_ROOT="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")" && pwd)"
+# If symlinked, follow to real location
+if [[ -L "$0" ]]; then
+  REAL_PATH="$(readlink -f "$0" 2>/dev/null || readlink "$0")"
+  TACO_ROOT="$(cd "$(dirname "$REAL_PATH")" && pwd)"
+fi
+
+TACO_SH="$TACO_ROOT/taco.sh"
+
+# Auto-detect project root: walk up from CWD looking for .dev/ or .git/
+detect_project() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.dev" ]] || [[ -d "$dir/.git" ]]; then
+      printf '%s' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  printf '%s' "$PWD"
+}
+
+usage() {
+  cat <<'USAGE'
+taco — Personal dev pipeline CLI
+
+Usage:
+  taco                            Interactive mode (feature selector)
+  taco init                       Initialize .dev/ in current project
+  taco new <feature-name>         Create feature scaffold
+  taco list                       List features
+  taco status                     Show pipeline state
+  taco gate <G1|G2|G3> <name>    Check gate
+  taco events [n]                 Show last n events (default 20)
+  taco pack list                  List available domain packs
+  taco pack enable <pack-name>    Enable a domain pack
+  taco pack disable <pack-name>   Disable a domain pack
+  taco model check                Check external model availability
+  taco run <feature> [--auto] [--from <stage>]
+                                  Run full pipeline (autopilot)
+  taco help                       Show this help
+
+Install: ./scripts/install-taco.sh
+
+All commands auto-detect the project root from current directory.
+
+Stages: brainstorm, specify, plan, review-plan, implement, review-code, learn
+USAGE
+}
+
+# Interactive mode: show feature menu when no arguments
+interactive() {
+  local PROJECT
+  PROJECT=$(detect_project)
+
+  # Ensure initialized
+  "$TACO_SH" init "$PROJECT" >/dev/null 2>&1 || true
+
+  local specs_dir="$PROJECT/.dev/specs"
+  local features=()
+  local active=""
+
+  # Get active feature from state.json
+  if [[ -f "$PROJECT/.dev/state.json" ]]; then
+    active=$(jq -r '.feature // empty' "$PROJECT/.dev/state.json" 2>/dev/null || true)
+  fi
+
+  # Collect features
+  if [[ -d "$specs_dir" ]]; then
+    for d in "$specs_dir"/*/; do
+      [[ -d "$d" ]] || continue
+      local name
+      name=$(basename "$d")
+      [[ "$name" != "$active" ]] && features+=("$name")
+    done
+  fi
+
+  echo "taco interactive"
+  echo "Project: $PROJECT"
+  echo ""
+
+  local idx=1
+  local default_choice=""
+  local -A menu=()
+
+  # Active feature first
+  if [[ -n "$active" && -d "$specs_dir/$active" ]]; then
+    local stage=""
+    stage=$(jq -r '.stage // "unknown"' "$PROJECT/.dev/state.json" 2>/dev/null || echo "unknown")
+    printf '%d) Continue: %s [%s]\n' "$idx" "$active" "$stage"
+    menu[$idx]="$active"
+    default_choice="$idx"
+    idx=$((idx + 1))
+  fi
+
+  # Other features
+  for f in "${features[@]}"; do
+    printf '%d) Continue: %s\n' "$idx" "$f"
+    menu[$idx]="$f"
+    [[ -z "$default_choice" ]] && default_choice="$idx"
+    idx=$((idx + 1))
+  done
+
+  local new_idx="$idx"
+  printf '%d) Start new feature\n' "$new_idx"
+  idx=$((idx + 1))
+
+  local help_idx="$idx"
+  printf '%d) Show help\n' "$help_idx"
+  idx=$((idx + 1))
+
+  local exit_idx="$idx"
+  printf '%d) Exit\n' "$exit_idx"
+
+  [[ -z "$default_choice" ]] && default_choice="$new_idx"
+
+  echo ""
+  printf 'Choice [%s]: ' "$default_choice"
+  local choice
+  IFS= read -r choice || exit 1
+  [[ -z "$choice" ]] && choice="$default_choice"
+
+  # New feature
+  if [[ "$choice" == "$new_idx" ]]; then
+    printf 'Feature name: '
+    local feature_name
+    IFS= read -r feature_name || exit 1
+    [[ -z "$feature_name" ]] && { echo "No name provided." >&2; exit 1; }
+    "$TACO_SH" feature new "$PROJECT" "$feature_name"
+    echo ""
+    echo "Next: open Claude Code and run /brainstorm $feature_name"
+    exit 0
+  fi
+
+  # Help
+  if [[ "$choice" == "$help_idx" ]]; then
+    usage
+    exit 0
+  fi
+
+  # Exit
+  if [[ "$choice" == "$exit_idx" ]]; then
+    echo "Exit."
+    exit 0
+  fi
+
+  # Continue feature
+  local selected="${menu[$choice]:-}"
+  if [[ -z "$selected" ]]; then
+    echo "[ERROR] Invalid choice: $choice" >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "=== Feature: $selected ==="
+  "$TACO_SH" state show "$PROJECT"
+  echo ""
+  echo "Open Claude Code and continue with the next pipeline stage."
+  echo "Or run: taco gate G1 $selected"
+}
+
+# Main dispatch
+if [[ $# -eq 0 ]]; then
+  interactive
+  exit 0
+fi
+
+cmd="$1"
+PROJECT=$(detect_project)
+
+case "$cmd" in
+  init)
+    "$TACO_SH" init "$PROJECT"
+    ;;
+  new)
+    shift
+    [[ $# -ge 1 ]] || { echo "[ERROR] new requires <feature-name>" >&2; exit 1; }
+    "$TACO_SH" feature new "$PROJECT" "$@"
+    ;;
+  list)
+    "$TACO_SH" feature list "$PROJECT"
+    ;;
+  status)
+    "$TACO_SH" state show "$PROJECT"
+    ;;
+  gate)
+    shift
+    [[ $# -ge 2 ]] || { echo "[ERROR] gate requires <G1|G2|G3> <feature-name>" >&2; exit 1; }
+    "$TACO_SH" gate check "$1" "$PROJECT" "$2"
+    ;;
+  events)
+    shift
+    "$TACO_SH" events "$PROJECT" "${1:-20}"
+    ;;
+  pack)
+    shift
+    [[ $# -ge 1 ]] || { echo "[ERROR] pack requires subcommand" >&2; exit 1; }
+    sub="$1"; shift
+    case "$sub" in
+      list)    "$TACO_SH" pack list "$PROJECT" ;;
+      status)  "$TACO_SH" pack status "$PROJECT" ;;
+      enable)
+        [[ $# -ge 1 ]] || { echo "[ERROR] pack enable requires <pack-name>" >&2; exit 1; }
+        "$TACO_SH" pack enable "$PROJECT" "$1"
+        ;;
+      disable)
+        [[ $# -ge 1 ]] || { echo "[ERROR] pack disable requires <pack-name>" >&2; exit 1; }
+        "$TACO_SH" pack disable "$PROJECT" "$1"
+        ;;
+      *)
+        echo "[ERROR] unknown pack subcommand: $sub" >&2; exit 1 ;;
+    esac
+    ;;
+  model)
+    shift
+    [[ $# -ge 1 ]] || { echo "[ERROR] model requires subcommand" >&2; exit 1; }
+    case "$1" in
+      check) "$TACO_SH" model check ;;
+      *)     echo "[ERROR] unknown model subcommand: $1" >&2; exit 1 ;;
+    esac
+    ;;
+  run)
+    shift
+    [[ $# -ge 1 ]] || { echo "[ERROR] run requires <feature-name>" >&2; exit 1; }
+    echo ""
+    echo "=== taco autopilot ==="
+    echo "Feature: $1"
+    echo "Project: $PROJECT"
+    echo ""
+    echo "To run the full pipeline, use Claude Code:"
+    echo "  /run $1"
+    echo ""
+    echo "Or with options:"
+    echo "  /run $1 --auto         (no checkpoints)"
+    echo "  /run $1 --from plan    (resume from stage)"
+    echo ""
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    echo "[ERROR] unknown command: $cmd" >&2
+    exit 1
+    ;;
+esac
