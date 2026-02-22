@@ -6,25 +6,45 @@ This document is the Single Source of Truth for coding principles applied across
 
 Design with substitutability in mind. Favor composition and interfaces over deep inheritance trees.
 
+### SOLID Principles
+- **S — Single Responsibility (SRP)**: Each class has one reason to change. If a class handles both validation and persistence, split it
+- **O — Open/Closed (OCP)**: Open for extension, closed for modification — add behavior by adding new types, not editing existing ones
+- **L — Liskov Substitution (LSP)**: Subtypes must be usable wherever their parent type is expected without breaking correctness. If overriding a method changes the contract, the hierarchy is wrong
+- **I — Interface Segregation (ISP)**: Clients should not depend on methods they don't use. Prefer small, focused interfaces over fat ones (e.g., `Readable` + `Writable` over `ReadWriteStorage`)
+- **D — Dependency Inversion (DIP)**: Depend on abstractions (Protocol/ABC/Interface), never on concrete implementations. High-level modules define the interface; low-level modules implement it
+
+### Design Patterns
+적절한 상황에서 GoF 디자인 패턴을 활용한다. 단, 패턴 적용 자체가 목적이 되어선 안 되며 문제를 명확히 해결할 때만 사용한다.
+
+- **Strategy**: 조건 분기(if/else, switch) 대신 교체 가능한 전략 객체로 행동 변형을 추출
+- **Template Method**: 알고리즘 골격은 base에 정의하고, 구체 단계만 subclass에서 override
+- **Observer**: 상태 변화를 다수의 의존 객체에 알려야 할 때. 직접 호출 대신 이벤트 기반 통지
+- **Factory Method / Abstract Factory**: 객체 생성 로직을 캡슐화하여 구체 클래스 의존을 제거
+- **Decorator**: 기존 객체를 감싸서 동적으로 책임을 추가. 상속 없이 기능 확장
+- **Adapter**: 호환되지 않는 인터페이스를 변환하여 기존 코드와 협력 가능하게 만듦
+
+이 외의 패턴(Composite, Command, State, Proxy 등)도 상황에 맞으면 자유롭게 사용한다.
+
 ### Core Rules
 - **Composition > Inheritance**: Assemble behavior by composing small, focused objects rather than building deep class hierarchies
-- **Strategy Pattern**: Extract varying behavior into interchangeable strategy objects instead of branching with if/else or switch
-- **Template Method**: Define algorithm skeleton in a base, let subclasses override specific steps only
-- **Dependency Inversion (DIP)**: Depend on abstractions (Protocol/ABC/Interface), never on concrete implementations
-- **Open/Closed**: Classes are open for extension, closed for modification — add behavior by adding new types, not editing existing ones
+- **Program to interfaces**: Declare dependencies as abstract types; swap implementations freely
+- **Encapsulate what varies**: Identify what changes and isolate it behind an interface
 
 ### Checklist
-- [ ] No class inherits more than 2 levels deep
+- [ ] 다단계 상속(3+ levels)은 가급적 지양한다. 단, Template Method 등 명확한 이유가 있으면 허용하되 해당 이유를 주석으로 남긴다
 - [ ] Behavior variations use Strategy or similar pattern, not conditional chains
-- [ ] High-level modules depend on abstractions, not low-level modules
-- [ ] New behavior can be added without modifying existing code
+- [ ] High-level modules depend on abstractions, not low-level modules (DIP)
+- [ ] New behavior can be added without modifying existing code (OCP)
 - [ ] Each class has a single reason to change (SRP)
+- [ ] Subtypes are substitutable for their parent types without side effects (LSP)
+- [ ] No client is forced to depend on methods it does not use (ISP)
 
 ### Anti-Patterns
 - **God Class**: One class that knows and does everything
 - **instanceof/type-check chains**: `if isinstance(x, A) ... elif isinstance(x, B)` — use polymorphic dispatch instead
-- **Deep inheritance**: A → B → C → D → E hierarchy that is fragile and hard to reason about
+- **Deep inheritance without justification**: A → B → C → D → E hierarchy that is fragile and hard to reason about. 상속이 필요하면 이유를 명시하고 가능한 얕게 유지
 - **Leaky abstraction**: Interface that exposes implementation details (e.g., `SQLUserRepository` instead of `UserRepository`)
+- **Pattern overuse**: 단순한 문제에 불필요한 패턴을 적용하여 복잡도만 높이는 경우
 
 ---
 
@@ -65,26 +85,29 @@ Isolate domain logic from infrastructure. The domain is the center; everything e
 
 ### Core Rules
 - **Domain (Core)**: Pure business logic. No imports from frameworks, DB drivers, HTTP libraries, or external services
-- **Port**: Interface that the domain defines for what it *needs* (Driven Port) or what it *offers* (Driving Port)
-  - Driving Port: Use cases the outside world can invoke (e.g., `CreateOrderUseCase`)
-  - Driven Port: Services the domain needs (e.g., `OrderRepository`, `PaymentGateway`)
-- **Adapter**: Concrete implementation of a Port (e.g., `PostgresOrderRepository`, `StripePaymentGateway`)
-- **Dependency Direction**: Always inward. Adapters depend on Ports; Ports depend on Domain. Never the reverse
+- **Port**: Application layer가 정의하는 인터페이스. 외부와의 경계를 명시
+  - Driving (Inbound) Port: 외부가 애플리케이션을 호출하는 인터페이스 (e.g., `CreateOrderUseCase`)
+  - Driven (Outbound) Port: 애플리케이션이 외부에 요청하는 인터페이스 (e.g., `OrderRepository`, `PaymentGateway`)
+- **Adapter**: Port의 구체 구현체 (e.g., `PostgresOrderRepository`, `StripePaymentGateway`)
+- **Dependency Direction**: Always inward. Adapters → Application(Ports) → Domain. Never the reverse
 - **Domain purity**: Domain objects must be testable with zero infrastructure (no DB, no network, no filesystem)
 
 ### Directory Structure Example
 ```
 src/
-├── domain/           # Pure business logic
-│   ├── models/       # Entities, Value Objects
-│   ├── services/     # Domain services
-│   └── ports/        # Port interfaces (Driving + Driven)
-├── application/      # Use cases (orchestrate domain)
-│   └── use_cases/
-├── adapters/         # Infrastructure implementations
-│   ├── inbound/      # REST controllers, CLI handlers, message consumers
-│   └── outbound/     # DB repositories, external API clients, file storage
-└── config/           # Wiring / dependency injection
+├── domain/              # Pure business logic
+│   ├── models/          # Entities, Value Objects
+│   └── services/        # Domain services
+├── application/         # Application layer (ports + use cases)
+│   ├── inbound/         # Driving side
+│   │   ├── ports/       # Driving port interfaces (e.g., CreateOrderUseCase)
+│   │   └── usecases/    # Use case implementations
+│   └── outbound/        # Driven side
+│       └── ports/       # Driven port interfaces (e.g., OrderRepository)
+├── adapters/            # Infrastructure implementations
+│   ├── inbound/         # Driving adapters (REST controllers, CLI handlers)
+│   └── outbound/        # Driven adapters (DB repositories, API clients)
+└── config/              # Wiring / dependency injection
 ```
 
 ### Checklist
