@@ -37,8 +37,8 @@ Also gather:
 Same pattern as review-plan, but with code review criteria:
 
 **Claude** (always available):
-- Spawn **reviewer** agent with diff + spec context
-- Focus: correctness, security, error handling, test coverage
+- Spawn **reviewer** agent with diff + spec + `docs/coding-principles.md` context
+- Focus: correctness, security, error handling, test coverage, coding principles compliance
 
 **Codex** (if available):
 - `call_codex` with code review prompt

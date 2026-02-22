@@ -41,6 +41,11 @@ date: "{YYYY-MM-DD}"
 ### Architecture
 {How this fits into the existing system. Diagrams if helpful.}
 
+**Hexagonal Boundaries** (refer to `docs/coding-principles.md`):
+- Define which Port interfaces this feature introduces or modifies (Driving/Driven)
+- Identify Adapter implementations needed (REST, DB, external API, etc.)
+- Confirm the domain model has no direct external dependencies
+
 ### API Changes
 {New or modified endpoints/interfaces. "None" if no API changes.}
 

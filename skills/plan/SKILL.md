@@ -29,17 +29,21 @@ Read both:
 - `.dev/specs/{feature-name}/spec.md` (detailed spec)
 
 ### Phase 2: Architecture Analysis
+Read `docs/coding-principles.md` for coding standards reference.
+
 Spawn an **explorer** agent to deep-dive into:
 - Files that need modification (exact paths)
 - Existing architecture patterns to follow
 - Dependency graph of affected modules
 - Test infrastructure available
+- Hexagonal layer classification of affected files (Domain / Port / Adapter)
 
 ### Phase 3: Task Decomposition
 Break the spec into ordered, atomic tasks. Each task should be:
 - Completable in a single focused session
 - Independently testable
 - Clear about what files to touch
+- Assigned to a hexagonal layer (Domain → Port → Adapter) when applicable
 
 ### Phase 4: Risk Assessment
 Spawn a **critic** agent to review the plan:

@@ -7,7 +7,7 @@ A Claude Code plugin implementing a structured development pipeline:
 
 | Stage | Command | Model | Purpose | Gate |
 |-------|---------|-------|---------|------|
-| 1 | `/brainstorm <name>` | Claude | Explore ideas via Socratic Q&A | — |
+| 1 | `/brainstorm <name>` | Claude+Codex+Gemini | Explore ideas via Socratic Q&A + 3-model debate | — |
 | 2 | `/specify <name>` | Claude | Write structured specification | — |
 | 3 | `/plan <name>` | Claude | Generate technical plan | G1 (spec complete) |
 | 4 | `/review-plan <name>` | Claude+Codex+Gemini | 3-model plan review + Draft PR | — |
@@ -136,9 +136,9 @@ Denials are logged to events.jsonl.
 
 ## Model Distribution
 
-- **Claude** (default): brainstorm, specify, plan, learn — thinking and documentation
+- **Claude** (default): specify, plan, learn — thinking and documentation
 - **Codex CLI** (`codex exec`): implement — code generation
-- **3-Model** (Claude + Codex + Gemini): review-plan, review-code — diverse perspectives
+- **3-Model** (Claude + Codex + Gemini): brainstorm, review-plan, review-code — diverse perspectives
 
 Graceful degradation: if Codex/Gemini CLI unavailable, proceeds with Claude only.
 
@@ -259,6 +259,15 @@ Run automated smoke tests:
 ```
 
 Tests cover: script executability, JSON validity, init/feature/gate/state-manager/guard/agent/skill validation.
+
+## Coding Principles
+
+Three principles guide all implementation in this pipeline:
+1. **Polymorphism-Oriented OOP** — Strategy/Template Method, Composition > Inheritance, DIP
+2. **Kent Beck Style** — Simple Design 4 rules, small methods, intention-revealing names, TDD, YAGNI
+3. **Hexagonal Architecture** — Domain (Core) ← Port (Interface) ← Adapter (Implementation), dependency direction inward only
+
+Full reference: `docs/coding-principles.md`
 
 ## External Dependencies
 
