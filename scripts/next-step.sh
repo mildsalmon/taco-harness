@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # next-step.sh — PostToolUse[Skill] hook
 # Suggests the next pipeline step after current skill completes
+# Also sends Telegram/Discord notification on stage transitions
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/notify.sh"
 
 INPUT=$(cat)
 
@@ -65,5 +69,8 @@ case "$STAGE" in
     exit 0
     ;;
 esac
+
+# Send notification on stage transition
+notify "taco" "$MSG" &
 
 printf '{"hookSpecificOutput":{"additionalContext":"[Pipeline] %s"}}\n' "$MSG"
