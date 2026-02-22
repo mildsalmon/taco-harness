@@ -1,4 +1,4 @@
-# taco-claude — Personal Dev Harness
+# taco-harness — Personal Dev Harness
 
 A Claude Code plugin implementing a structured development pipeline:
 `/brainstorm → /specify → /plan → /review-plan → /implement → /review-code → /learn`
@@ -35,7 +35,7 @@ Manual check: `./scripts/taco.sh gate check G1 <project-dir> <feature>`
 
 ### Plugin Files (this repo)
 ```
-taco-claude/
+taco-harness/
 ├── .claude-plugin/plugin.json   # Plugin registration
 ├── hooks/hooks.json             # Hook definitions
 ├── scripts/                     # Bash hook + utility scripts
