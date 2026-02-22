@@ -26,6 +26,7 @@ Usage:
   taco.sh pack enable <project-dir> <pack>  Enable a domain pack
   taco.sh pack disable <project-dir> <pack> Disable a domain pack
   taco.sh model check                       Check external model availability
+  taco.sh model doctor                      Probe models with test prompt
   taco.sh state show <project-dir>          Show current pipeline state
   taco.sh events <project-dir> [n]          Show last n events (default 20)
   taco.sh help                              Show this help
@@ -206,6 +207,115 @@ cmd_model_check() {
   check_models
 }
 
+cmd_model_doctor() {
+  echo "=== Model Doctor ==="
+  echo ""
+
+  local healthy_count=0 total=2
+
+  # --- Claude (host model, always available) ---
+  echo "[Claude]"
+  echo "  Status:   OK (host model)"
+  echo "  Model:    claude-opus-4-6 / claude-sonnet-4-6"
+  echo ""
+
+  # --- Launch probes in parallel ---
+  local codex_tmp gemini_tmp
+  codex_tmp=$(mktemp "${TMPDIR:-/tmp}/taco-probe-codex.XXXXXX")
+  gemini_tmp=$(mktemp "${TMPDIR:-/tmp}/taco-probe-gemini.XXXXXX")
+
+  local codex_available=false gemini_available=false
+  _model_available "codex" && codex_available=true
+  _model_available "gemini" && gemini_available=true
+
+  # Start probes in background
+  if $codex_available; then
+    probe_codex > "$codex_tmp" 2>/dev/null &
+    local codex_pid=$!
+  fi
+  if $gemini_available; then
+    probe_gemini > "$gemini_tmp" 2>/dev/null &
+    local gemini_pid=$!
+  fi
+
+  echo "  Probing models in parallel..."
+  echo ""
+
+  # Wait for both
+  if $codex_available; then
+    wait "$codex_pid" 2>/dev/null || true
+  fi
+  if $gemini_available; then
+    wait "$gemini_pid" 2>/dev/null || true
+  fi
+
+  # --- Display Codex results ---
+  echo "[Codex]"
+  if $codex_available; then
+    echo "  CLI:      Found ($(command -v codex))"
+    echo "  Model:    gpt-5.3-codex (xhigh effort)"
+
+    local codex_result codex_status codex_latency codex_response
+    codex_result=$(cat "$codex_tmp")
+    codex_status=$(printf '%s' "$codex_result" | jq -r '.status' 2>/dev/null || echo "error")
+    codex_latency=$(printf '%s' "$codex_result" | jq -r '.latency_ms' 2>/dev/null || echo "?")
+    codex_response=$(printf '%s' "$codex_result" | jq -r '.response' 2>/dev/null || echo "")
+
+    if [[ "$codex_status" == "healthy" ]]; then
+      echo "  Probe:    healthy (${codex_latency}ms)"
+      echo "  Response: \"${codex_response}\""
+      healthy_count=$((healthy_count + 1))
+    else
+      echo "  Probe:    DEGRADED (${codex_latency}ms)"
+      [[ -n "$codex_response" ]] && echo "  Response: \"${codex_response}\""
+      echo "  Hint:     Check API key: codex auth status"
+    fi
+  else
+    echo "  CLI:      NOT FOUND"
+    echo "  Hint:     Install: npm i -g @openai/codex"
+  fi
+  echo ""
+
+  # --- Display Gemini results ---
+  echo "[Gemini]"
+  if $gemini_available; then
+    echo "  CLI:      Found ($(command -v gemini))"
+    echo "  Model:    gemini-2.5-pro"
+
+    local gemini_result gemini_status gemini_latency gemini_response
+    gemini_result=$(cat "$gemini_tmp")
+    gemini_status=$(printf '%s' "$gemini_result" | jq -r '.status' 2>/dev/null || echo "error")
+    gemini_latency=$(printf '%s' "$gemini_result" | jq -r '.latency_ms' 2>/dev/null || echo "?")
+    gemini_response=$(printf '%s' "$gemini_result" | jq -r '.response' 2>/dev/null || echo "")
+
+    if [[ "$gemini_status" == "healthy" ]]; then
+      echo "  Probe:    healthy (${gemini_latency}ms)"
+      echo "  Response: \"${gemini_response}\""
+      healthy_count=$((healthy_count + 1))
+    else
+      echo "  Probe:    DEGRADED (${gemini_latency}ms)"
+      [[ -n "$gemini_response" ]] && echo "  Response: \"${gemini_response}\""
+      echo "  Hint:     Check auth: gemini auth status"
+    fi
+  else
+    echo "  CLI:      NOT FOUND"
+    echo "  Hint:     Install: see https://github.com/google-gemini/gemini-cli"
+  fi
+  echo ""
+
+  # Cleanup
+  rm -f "$codex_tmp" "$gemini_tmp"
+
+  # --- Verdict ---
+  if [[ $healthy_count -eq $total ]]; then
+    echo "Verdict: ALL HEALTHY ($healthy_count/$total)"
+  elif [[ $healthy_count -gt 0 ]]; then
+    echo "Verdict: PARTIAL ($healthy_count/$total healthy)"
+  else
+    echo "Verdict: DEGRADED (0/$total — Claude-only mode)"
+  fi
+}
+
 cmd_events() {
   [[ $# -ge 1 ]] || die "events requires <project-dir> [n]"
   local project_dir="$1"
@@ -259,8 +369,9 @@ case "$cmd" in
     [[ $# -ge 2 ]] || die "model requires subcommand"
     sub="$2"; shift 2
     case "$sub" in
-      check) cmd_model_check ;;
-      *)     die "unknown model subcommand: $sub" ;;
+      check)  cmd_model_check ;;
+      doctor) cmd_model_doctor ;;
+      *)      die "unknown model subcommand: $sub" ;;
     esac
     ;;
   state)

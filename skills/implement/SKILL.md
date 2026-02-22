@@ -52,7 +52,7 @@ For each task in order:
 docker run --rm --network none \
   -v "{worktree}:/workspace" \
   -w /workspace {base-image} \
-  codex exec "{task-prompt}"
+  codex exec -m gpt-5.3-codex -c model_reasoning_effort=xhigh "{task-prompt}"
 ```
 
 **Option B — Direct execution (fallback)**:

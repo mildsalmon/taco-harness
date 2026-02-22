@@ -44,6 +44,7 @@ Usage:
   taco pack enable <pack-name>    Enable a domain pack
   taco pack disable <pack-name>   Disable a domain pack
   taco model check                Check external model availability
+  taco model doctor               Probe models with test prompt
   taco run <feature> [--auto] [--from <stage>]
                                   Run full pipeline (autopilot)
   taco help                       Show this help
@@ -223,8 +224,9 @@ case "$cmd" in
     shift
     [[ $# -ge 1 ]] || { echo "[ERROR] model requires subcommand" >&2; exit 1; }
     case "$1" in
-      check) "$TACO_SH" model check ;;
-      *)     echo "[ERROR] unknown model subcommand: $1" >&2; exit 1 ;;
+      check)  "$TACO_SH" model check ;;
+      doctor) "$TACO_SH" model doctor ;;
+      *)      echo "[ERROR] unknown model subcommand: $1" >&2; exit 1 ;;
     esac
     ;;
   run)

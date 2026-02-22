@@ -136,8 +136,10 @@ Denials are logged to events.jsonl.
 
 ## Model Distribution
 
-- **Claude** (default): specify, plan, learn — thinking and documentation
-- **Codex CLI** (`codex exec`): implement — code generation
+- **Claude Opus 4.6** (default): specify, plan, learn, critic, reviewer — thinking, documentation, deep analysis
+- **Claude Sonnet 4.6** (lightweight): explorer, worker, researcher — codebase exploration, focused implementation, research
+- **Codex CLI** (`codex exec -m gpt-5.3-codex -c model_reasoning_effort=xhigh`): implement — code generation
+- **Gemini CLI** (`gemini --model gemini-2.5-pro`): brainstorm debate, review — broad perspectives
 - **3-Model** (Claude + Codex + Gemini): brainstorm, review-plan, review-code — diverse perspectives
 
 Graceful degradation: if Codex/Gemini CLI unavailable, proceeds with Claude only.
@@ -167,6 +169,8 @@ Fallback: if Docker unavailable, implement runs in git worktree with guard.sh fi
 ./scripts/taco.sh feature new <project-dir> <name>  # Create feature scaffold
 ./scripts/taco.sh feature list <project-dir>         # List features
 ./scripts/taco.sh gate check <G1|G2|G3> <dir> <feature>  # Check gate
+./scripts/taco.sh model check                        # Check CLI availability
+./scripts/taco.sh model doctor                       # Probe models with test prompt
 ./scripts/taco.sh state show <project-dir>           # Show pipeline state
 ./scripts/taco.sh events <project-dir> [n]           # Show last n events
 ```
@@ -272,7 +276,7 @@ Full reference: `docs/coding-principles.md`
 ## External Dependencies
 
 - **Required**: `jq` (JSON processing)
-- **Optional**: `codex` CLI (Codex model), `gemini` CLI (Gemini model)
+- **Optional**: `codex` CLI (gpt-5.3-codex, xhigh effort), `gemini` CLI (gemini-2.5-pro)
 - **Optional**: `timeout` or `gtimeout` (if unavailable, built-in watchdog fallback is used)
 - **Optional**: `gh` CLI (GitHub PR operations)
 - **Optional**: `docker` (isolated implementation sandbox)

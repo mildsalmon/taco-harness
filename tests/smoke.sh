@@ -100,6 +100,52 @@ pass "all skills have valid frontmatter + validate_prompt"
 (source "$ROOT/scripts/call-model.sh" && check_models >/dev/null) || fail "call-model.sh failed to load"
 pass "call-model.sh loads"
 
+# --- Test 11b: check_models returns valid JSON with model info ---
+models_json=$(source "$ROOT/scripts/call-model.sh" && check_models)
+echo "$models_json" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'codex' in d and 'gemini' in d" 2>/dev/null || fail "check_models JSON structure invalid"
+pass "check_models returns valid JSON"
+
+# --- Test 11c: model doctor runs without error (short timeout to avoid hanging) ---
+CALL_MODEL_TIMEOUT=5 "$TACO" model doctor >/dev/null 2>&1 || fail "model doctor command failed"
+pass "model doctor runs"
+
+# --- Test 11d: probe functions (live, skippable) ---
+if [[ "${TACO_SKIP_MODEL_PROBE:-0}" != "1" ]]; then
+  source "$ROOT/scripts/call-model.sh"
+
+  # Probe Codex (if CLI available)
+  if _model_available "codex"; then
+    codex_probe=$(probe_codex)
+    codex_probe_status=$(printf '%s' "$codex_probe" | jq -r '.status' 2>/dev/null || echo "error")
+    if [[ "$codex_probe_status" == "healthy" ]]; then
+      pass "probe_codex: healthy"
+    elif [[ "$codex_probe_status" == "degraded" ]]; then
+      echo "[WARN] probe_codex: degraded (model responded but TACO_OK not found)"
+    else
+      echo "[WARN] probe_codex: $codex_probe_status"
+    fi
+  else
+    echo "[SKIP] probe_codex: CLI not installed"
+  fi
+
+  # Probe Gemini (if CLI available)
+  if _model_available "gemini"; then
+    gemini_probe=$(probe_gemini)
+    gemini_probe_status=$(printf '%s' "$gemini_probe" | jq -r '.status' 2>/dev/null || echo "error")
+    if [[ "$gemini_probe_status" == "healthy" ]]; then
+      pass "probe_gemini: healthy"
+    elif [[ "$gemini_probe_status" == "degraded" ]]; then
+      echo "[WARN] probe_gemini: degraded (model responded but TACO_OK not found)"
+    else
+      echo "[WARN] probe_gemini: $gemini_probe_status"
+    fi
+  else
+    echo "[SKIP] probe_gemini: CLI not installed"
+  fi
+else
+  echo "[SKIP] model probes (TACO_SKIP_MODEL_PROBE=1)"
+fi
+
 # --- Test 12: synthesize-reviews.sh ---
 echo "Claude ok" > "$TMP_DIR/c.txt"
 echo "Codex ok" > "$TMP_DIR/x.txt"

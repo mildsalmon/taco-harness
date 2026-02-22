@@ -90,13 +90,18 @@ call_codex() {
     return 0
   fi
   local output
-  if output=$(_run_with_timeout codex exec "$prompt"); then
+  if output=$(_run_with_timeout codex exec -m gpt-5.3-codex -c model_reasoning_effort=xhigh "$prompt"); then
     echo "AVAILABLE" >&2
     printf '%s' "$output"
   else
     echo "DEGRADED" >&2
     return 0
   fi
+}
+
+# Gemini oneshot wrapper — closes stdin so CLI exits after responding
+_gemini_oneshot() {
+  gemini --model gemini-2.5-pro -p "$1" < /dev/null
 }
 
 # Call Gemini CLI
@@ -109,7 +114,7 @@ call_gemini() {
     return 0
   fi
   local output
-  if output=$(_run_with_timeout gemini -p "$prompt"); then
+  if output=$(_run_with_timeout _gemini_oneshot "$prompt"); then
     echo "AVAILABLE" >&2
     printf '%s' "$output"
   else
@@ -124,5 +129,159 @@ check_models() {
   local codex_status="SKIPPED" gemini_status="SKIPPED"
   _model_available "codex" && codex_status="AVAILABLE"
   _model_available "gemini" && gemini_status="AVAILABLE"
-  printf '{"codex":"%s","gemini":"%s"}\n' "$codex_status" "$gemini_status"
+  printf '{"codex":{"status":"%s","model":"gpt-5.3-codex","effort":"xhigh"},"gemini":{"status":"%s","model":"gemini-2.5-pro"}}\n' \
+    "$codex_status" "$gemini_status"
+}
+
+# Millisecond timestamp (portable: macOS lacks %N)
+_ms_now() {
+  if command -v gdate >/dev/null 2>&1; then
+    gdate +%s%3N
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import time; print(int(time.time()*1000))'
+  else
+    echo "$(date +%s)000"
+  fi
+}
+
+# JSON-escape a string (minimal: backslash, double-quote, newlines)
+_json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ' | head -c 200
+}
+
+# -------------------------------------------------------------------
+# Probe functions — send a test prompt and verify response
+# -------------------------------------------------------------------
+
+TACO_PROBE_PROMPT="Respond with exactly: TACO_OK"
+TACO_PROBE_TIMEOUT="${TACO_PROBE_TIMEOUT:-60}"
+
+# Probe Codex CLI
+# Usage: probe_codex → prints JSON result to stdout
+probe_codex() {
+  if ! _model_available "codex"; then
+    printf '{"status":"unavailable","model":"gpt-5.3-codex","latency_ms":0,"response":""}\n'
+    return 0
+  fi
+
+  local start end latency_ms output status response_escaped
+  start=$(_ms_now)
+
+  local saved_timeout="$CALL_MODEL_TIMEOUT"
+  CALL_MODEL_TIMEOUT="$TACO_PROBE_TIMEOUT"
+  if output=$(_run_with_timeout codex exec -m gpt-5.3-codex -c model_reasoning_effort=low "$TACO_PROBE_PROMPT" 2>/dev/null); then
+    end=$(_ms_now)
+    latency_ms=$(( end - start ))
+    response_escaped=$(_json_escape "$output")
+
+    if printf '%s' "$output" | grep -qi "TACO_OK"; then
+      status="healthy"
+    else
+      status="degraded"
+    fi
+  else
+    end=$(_ms_now)
+    latency_ms=$(( end - start ))
+    status="degraded"
+    response_escaped=""
+  fi
+
+  CALL_MODEL_TIMEOUT="$saved_timeout"
+  printf '{"status":"%s","model":"gpt-5.3-codex","effort":"low","latency_ms":%d,"response":"%s"}\n' \
+    "$status" "$latency_ms" "$response_escaped"
+}
+
+# Probe Gemini CLI
+# Usage: probe_gemini → prints JSON result to stdout
+probe_gemini() {
+  if ! _model_available "gemini"; then
+    printf '{"status":"unavailable","model":"gemini-2.5-pro","latency_ms":0,"response":""}\n'
+    return 0
+  fi
+
+  local start end latency_ms output status response_escaped
+  start=$(_ms_now)
+
+  local saved_timeout="$CALL_MODEL_TIMEOUT"
+  CALL_MODEL_TIMEOUT="$TACO_PROBE_TIMEOUT"
+  if output=$(_run_with_timeout _gemini_oneshot "$TACO_PROBE_PROMPT" 2>/dev/null); then
+    end=$(_ms_now)
+    latency_ms=$(( end - start ))
+    response_escaped=$(_json_escape "$output")
+
+    if printf '%s' "$output" | grep -qi "TACO_OK"; then
+      status="healthy"
+    else
+      status="degraded"
+    fi
+  else
+    end=$(_ms_now)
+    latency_ms=$(( end - start ))
+    status="degraded"
+    response_escaped=""
+  fi
+
+  CALL_MODEL_TIMEOUT="$saved_timeout"
+  printf '{"status":"%s","model":"gemini-2.5-pro","latency_ms":%d,"response":"%s"}\n' \
+    "$status" "$latency_ms" "$response_escaped"
+}
+
+# -------------------------------------------------------------------
+# Logged wrappers — call model + append invocation metadata to JSONL
+# -------------------------------------------------------------------
+
+TACO_MODEL_LOG="${TACO_MODEL_LOG:-/tmp/taco-model-calls.jsonl}"
+
+# Call Codex with JSONL logging
+# Usage: result=$(call_codex_logged "$prompt")
+# Same interface as call_codex (stdout=output, stderr=status)
+call_codex_logged() {
+  local prompt="$1"
+  local start end latency_ms output status prompt_len response_len
+  prompt_len=${#prompt}
+  start=$(_ms_now)
+
+  output=$(call_codex "$prompt" 2>/tmp/taco-codex-status.tmp)
+  status=$(cat /tmp/taco-codex-status.tmp 2>/dev/null || echo "UNKNOWN")
+  rm -f /tmp/taco-codex-status.tmp
+
+  end=$(_ms_now)
+  latency_ms=$(( end - start ))
+  response_len=${#output}
+
+  # Append to log
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  printf '{"ts":"%s","model":"gpt-5.3-codex","status":"%s","latency_ms":%d,"prompt_len":%d,"response_len":%d}\n' \
+    "$ts" "$status" "$latency_ms" "$prompt_len" "$response_len" >> "$TACO_MODEL_LOG"
+
+  echo "$status" >&2
+  printf '%s' "$output"
+}
+
+# Call Gemini with JSONL logging
+# Usage: result=$(call_gemini_logged "$prompt")
+# Same interface as call_gemini (stdout=output, stderr=status)
+call_gemini_logged() {
+  local prompt="$1"
+  local start end latency_ms output status prompt_len response_len
+  prompt_len=${#prompt}
+  start=$(_ms_now)
+
+  output=$(call_gemini "$prompt" 2>/tmp/taco-gemini-status.tmp)
+  status=$(cat /tmp/taco-gemini-status.tmp 2>/dev/null || echo "UNKNOWN")
+  rm -f /tmp/taco-gemini-status.tmp
+
+  end=$(_ms_now)
+  latency_ms=$(( end - start ))
+  response_len=${#output}
+
+  # Append to log
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  printf '{"ts":"%s","model":"gemini-2.5-pro","status":"%s","latency_ms":%d,"prompt_len":%d,"response_len":%d}\n' \
+    "$ts" "$status" "$latency_ms" "$prompt_len" "$response_len" >> "$TACO_MODEL_LOG"
+
+  echo "$status" >&2
+  printf '%s' "$output"
 }
