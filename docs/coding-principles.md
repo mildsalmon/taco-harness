@@ -95,20 +95,29 @@ Isolate domain logic from infrastructure. The domain is the center; everything e
 ### Directory Structure Example
 ```
 src/
-├── domain/              # Pure business logic
+├── domain/              # Pure business logic (no framework imports)
 │   ├── models/          # Entities, Value Objects
-│   └── services/        # Domain services
-├── application/         # Application layer (ports + use cases)
-│   ├── inbound/         # Driving side
-│   │   ├── ports/       # Driving port interfaces (e.g., CreateOrderUseCase)
-│   │   └── usecases/    # Use case implementations
-│   └── outbound/        # Driven side
-│       └── ports/       # Driven port interfaces (e.g., OrderRepository)
+│   └── services/        # Domain services (core business rules)
+├── application/         # Application layer (orchestration)
+│   ├── ports/
+│   │   ├── inbound/     # Driving port interfaces (e.g., CreateOrderUseCase)
+│   │   └── outbound/    # Driven port interfaces (e.g., OrderRepository)
+│   └── services/        # Application services (implement inbound ports,
+│                        #   orchestrate domain services, use outbound ports)
 ├── adapters/            # Infrastructure implementations
 │   ├── inbound/         # Driving adapters (REST controllers, CLI handlers)
 │   └── outbound/        # Driven adapters (DB repositories, API clients)
 └── config/              # Wiring / dependency injection
 ```
+
+### Call Flow
+```
+Adapter(inbound) → Port(inbound) → Application Service → Domain Service
+                                                        ↘ Port(outbound) → Adapter(outbound)
+```
+
+- **Application Service**: Implements an inbound port. Orchestrates the use case by calling domain services for business logic and outbound ports for external dependencies. Contains no business rules itself
+- **Domain Service**: Pure business logic. No knowledge of ports, adapters, or infrastructure
 
 ### Checklist
 - [ ] Domain module has zero infrastructure imports
