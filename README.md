@@ -1,4 +1,4 @@
-# taco-claude
+# taco-harness
 
 개인 개발 워크플로우를 구조화하는 Claude Code 플러그인.
 
@@ -44,20 +44,30 @@
 - `gh` CLI — GitHub PR 자동 생성
 - `docker` — 구현 단계 격리 실행
 
-### 플러그인 등록
+### 플러그인 설치
 
-```bash
-claude plugins add /path/to/taco-claude
+마켓플레이스에서 설치:
+
 ```
+/plugin marketplace add mildsalmon/taco-harness
+/plugin install taco@mildsalmon
+```
+
+설치 후 Claude Code를 재시작하면 플러그인이 로드된다.
 
 ### taco CLI 설치 (선택)
 
 터미널에서 바로 `taco` 명령어를 쓸 수 있다:
 
 ```bash
-cd /path/to/taco-claude
-./scripts/install-taco.sh              # ~/.local/bin/taco 심볼릭 링크 생성
-./scripts/install-taco.sh /usr/local/bin  # 또는 다른 경로 지정
+~/source_code/harness/taco-harness/scripts/install-taco.sh
+```
+
+기본으로 `~/.local/bin/taco`에 심볼릭 링크를 생성한다.
+다른 경로를 원하면 인자로 전달:
+
+```bash
+~/source_code/harness/taco-harness/scripts/install-taco.sh /usr/local/bin
 ```
 
 `~/.local/bin`이 PATH에 없으면 셸 설정에 추가:
@@ -90,6 +100,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ### taco CLI (터미널에서)
 
 ```bash
+taco                           # 인터랙티브 모드 (feature 선택 메뉴)
 taco init                      # 현재 프로젝트에 .dev/ 초기화
 taco new user-auth             # feature 생성
 taco list                      # feature 목록
@@ -97,6 +108,8 @@ taco status                    # 파이프라인 상태
 taco gate G1 user-auth         # gate 검증
 taco events                    # 최근 이벤트 로그
 taco run user-auth             # 오토파일럿 안내
+taco pack list                 # 도메인 팩 목록
+taco model check               # 외부 모델 CLI 가용성 확인
 ```
 
 순서를 건너뛰면 경고가 뜬다:
@@ -152,9 +165,11 @@ implement 단계에서 Docker 격리 실행을 지원한다:
 
 ### taco 명령어 (권장)
 
-프로젝트 디렉토리에서 바로 실행. 프로젝트 루트를 자동 감지한다 (`.dev/` 또는 `.git/` 탐색):
+프로젝트 디렉토리에서 바로 실행. 프로젝트 루트를 자동 감지한다 (`.dev/` 또는 `.git/` 탐색).
+인자 없이 실행하면 인터랙티브 모드로 진입한다:
 
 ```bash
+taco                           # 인터랙티브 모드 (feature 선택/생성)
 taco init                      # 현재 프로젝트에 .dev/ 초기화
 taco new <이름>                 # feature 생성
 taco list                      # feature 목록
@@ -162,7 +177,10 @@ taco status                    # 파이프라인 상태
 taco gate <G1|G2|G3> <이름>    # gate 검증
 taco events [개수]              # 이벤트 로그 (기본 20개)
 taco run <이름>                 # 오토파일럿 안내
-taco setup                     # taco를 PATH에 설치
+taco pack list                 # 도메인 팩 목록
+taco pack enable <이름>         # 팩 활성화
+taco pack disable <이름>        # 팩 비활성화
+taco model check               # 외부 모델 CLI 가용성 확인
 ```
 
 ### taco.sh (저수준)
@@ -176,6 +194,8 @@ taco setup                     # taco를 PATH에 설치
 ./scripts/taco.sh gate check G1 <프로젝트경로> <이름>     # gate 검증
 ./scripts/taco.sh state show <프로젝트경로>               # 파이프라인 상태
 ./scripts/taco.sh events <프로젝트경로> [개수]             # 이벤트 로그
+./scripts/taco.sh pack list <프로젝트경로>                # 팩 목록
+./scripts/taco.sh model check                            # 모델 CLI 확인
 ```
 
 ## 알림 설정
@@ -204,18 +224,29 @@ domains/my-domain/
 └── VERIFY_SCENARIOS.md  # 검증 시나리오
 ```
 
+팩 관리:
+```bash
+taco pack list               # 팩 목록
+taco pack enable my-domain   # 팩 활성화
+taco pack disable my-domain  # 팩 비활성화
+```
+
 ## 프로젝트 구조
 
 ```
-taco-claude/
+taco-harness/
 ├── .claude-plugin/plugin.json   # 플러그인 등록
 ├── hooks/hooks.json             # Hook 정의
-├── scripts/                     # 13개 bash 스크립트 + taco CLI
+├── scripts/                     # 14개 bash 스크립트 + taco CLI
+│   ├── lib/common.sh            # 공유 유틸리티 라이브러리
+│   └── ...
 ├── agents/                      # 5개 에이전트 (explorer, critic, reviewer, worker, researcher)
 ├── skills/                      # 9개 스킬 (7 파이프라인 + run 오토파일럿 + setup-notify)
 ├── sandbox/                     # Docker 격리 실행 환경
 ├── templates/                   # 스펙, 계획, 검증, 태스크, 도메인 템플릿
-├── docs/security/               # 보안 정책 문서 8개
+├── docs/
+│   ├── security/                # 보안 정책 문서 8개
+│   └── architecture/            # 아키텍처 시각화
 ├── tests/smoke.sh               # 자동 스모크 테스트
 ├── CLAUDE.md                    # Claude Code용 프로젝트 규칙
 └── README.md                    # 이 파일
