@@ -42,6 +42,8 @@ git worktree add ../{feature-name}-wt -b feat/{feature-name}
 Extract ordered task list from plan.md.
 Build execution sequence respecting dependencies.
 
+Load `docs/coding-principles.md` — include its key rules as context when delegating to workers.
+
 ### Phase 3: Execute Tasks
 For each task in order:
 

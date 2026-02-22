@@ -11,6 +11,11 @@ date: "{YYYY-MM-DD}"
 {High-level overview of the implementation approach.
 How does it fit into the existing codebase? What patterns does it follow?}
 
+**Layer Separation** (refer to `docs/coding-principles.md`):
+- **Domain**: {domain models, services, and ports involved}
+- **Port**: {interfaces introduced or modified — Driving and Driven}
+- **Adapter**: {concrete implementations — REST, DB, external API, etc.}
+
 ## Tasks
 
 ### Task 1: {Title}
@@ -21,6 +26,8 @@ How does it fit into the existing codebase? What patterns does it follow?}
 - **MUST NOT DO**:
   - {boundary — what to avoid}
   - {boundary}
+  - Do not reference infrastructure directly from the domain layer
+  - Review: could an if/else chain be replaced with polymorphism (Strategy)?
 - **Acceptance Criteria**:
   - [ ] {verifiable criterion}
   - [ ] {verifiable criterion}
