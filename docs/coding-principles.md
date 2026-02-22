@@ -14,16 +14,16 @@ Design with substitutability in mind. Favor composition and interfaces over deep
 - **D — Dependency Inversion (DIP)**: Depend on abstractions (Protocol/ABC/Interface), never on concrete implementations. High-level modules define the interface; low-level modules implement it
 
 ### Design Patterns
-적절한 상황에서 GoF 디자인 패턴을 활용한다. 단, 패턴 적용 자체가 목적이 되어선 안 되며 문제를 명확히 해결할 때만 사용한다.
+Use GoF design patterns when they clearly solve a problem. Applying a pattern should never be the goal itself — only use one when it simplifies the design.
 
-- **Strategy**: 조건 분기(if/else, switch) 대신 교체 가능한 전략 객체로 행동 변형을 추출
-- **Template Method**: 알고리즘 골격은 base에 정의하고, 구체 단계만 subclass에서 override
-- **Observer**: 상태 변화를 다수의 의존 객체에 알려야 할 때. 직접 호출 대신 이벤트 기반 통지
-- **Factory Method / Abstract Factory**: 객체 생성 로직을 캡슐화하여 구체 클래스 의존을 제거
-- **Decorator**: 기존 객체를 감싸서 동적으로 책임을 추가. 상속 없이 기능 확장
-- **Adapter**: 호환되지 않는 인터페이스를 변환하여 기존 코드와 협력 가능하게 만듦
+- **Strategy**: Extract varying behavior into interchangeable strategy objects instead of branching with if/else or switch
+- **Template Method**: Define the algorithm skeleton in a base class; let subclasses override specific steps only
+- **Observer**: Notify multiple dependents of state changes via events instead of direct calls
+- **Factory Method / Abstract Factory**: Encapsulate object creation to eliminate dependency on concrete classes
+- **Decorator**: Wrap an object to add responsibilities dynamically without inheritance
+- **Adapter**: Convert an incompatible interface so existing code can collaborate with it
 
-이 외의 패턴(Composite, Command, State, Proxy 등)도 상황에 맞으면 자유롭게 사용한다.
+Other patterns (Composite, Command, State, Proxy, etc.) are equally valid when the situation calls for them.
 
 ### Core Rules
 - **Composition > Inheritance**: Assemble behavior by composing small, focused objects rather than building deep class hierarchies
@@ -31,7 +31,7 @@ Design with substitutability in mind. Favor composition and interfaces over deep
 - **Encapsulate what varies**: Identify what changes and isolate it behind an interface
 
 ### Checklist
-- [ ] 다단계 상속(3+ levels)은 가급적 지양한다. 단, Template Method 등 명확한 이유가 있으면 허용하되 해당 이유를 주석으로 남긴다
+- [ ] Avoid multi-level inheritance (3+ levels). Allowed when clearly justified (e.g., Template Method), but document the reason in a comment
 - [ ] Behavior variations use Strategy or similar pattern, not conditional chains
 - [ ] High-level modules depend on abstractions, not low-level modules (DIP)
 - [ ] New behavior can be added without modifying existing code (OCP)
@@ -42,9 +42,9 @@ Design with substitutability in mind. Favor composition and interfaces over deep
 ### Anti-Patterns
 - **God Class**: One class that knows and does everything
 - **instanceof/type-check chains**: `if isinstance(x, A) ... elif isinstance(x, B)` — use polymorphic dispatch instead
-- **Deep inheritance without justification**: A → B → C → D → E hierarchy that is fragile and hard to reason about. 상속이 필요하면 이유를 명시하고 가능한 얕게 유지
+- **Deep inheritance without justification**: A → B → C → D → E hierarchy that is fragile and hard to reason about. If inheritance is needed, state the reason explicitly and keep it as shallow as possible
 - **Leaky abstraction**: Interface that exposes implementation details (e.g., `SQLUserRepository` instead of `UserRepository`)
-- **Pattern overuse**: 단순한 문제에 불필요한 패턴을 적용하여 복잡도만 높이는 경우
+- **Pattern overuse**: Applying unnecessary patterns to simple problems, adding complexity without benefit
 
 ---
 
@@ -85,10 +85,10 @@ Isolate domain logic from infrastructure. The domain is the center; everything e
 
 ### Core Rules
 - **Domain (Core)**: Pure business logic. No imports from frameworks, DB drivers, HTTP libraries, or external services
-- **Port**: Application layer가 정의하는 인터페이스. 외부와의 경계를 명시
-  - Driving (Inbound) Port: 외부가 애플리케이션을 호출하는 인터페이스 (e.g., `CreateOrderUseCase`)
-  - Driven (Outbound) Port: 애플리케이션이 외부에 요청하는 인터페이스 (e.g., `OrderRepository`, `PaymentGateway`)
-- **Adapter**: Port의 구체 구현체 (e.g., `PostgresOrderRepository`, `StripePaymentGateway`)
+- **Port**: Interface defined by the application layer. Marks the boundary between inside and outside
+  - Driving (Inbound) Port: Interface that the outside world uses to invoke the application (e.g., `CreateOrderUseCase`)
+  - Driven (Outbound) Port: Interface that the application uses to request external services (e.g., `OrderRepository`, `PaymentGateway`)
+- **Adapter**: Concrete implementation of a Port (e.g., `PostgresOrderRepository`, `StripePaymentGateway`)
 - **Dependency Direction**: Always inward. Adapters → Application(Ports) → Domain. Never the reverse
 - **Domain purity**: Domain objects must be testable with zero infrastructure (no DB, no network, no filesystem)
 
