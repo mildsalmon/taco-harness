@@ -68,6 +68,32 @@ result=$(echo '{"cwd":"'"$TMP_DIR"'","session_id":"smoke-test","prompt":"/brains
 echo "$result" | grep -q "entering /brainstorm" || fail "state-manager did not detect /brainstorm"
 pass "state-manager.sh pipeline detection"
 
+# --- Test 8b: skill-state-update.sh PreToolUse[Skill] detection ---
+result=$(echo '{"cwd":"'"$TMP_DIR"'","session_id":"smoke-skill","tool_name":"Skill","tool_input":{"skill":"taco:specify","args":"test-feature"}}' | "$ROOT/scripts/skill-state-update.sh")
+echo "$result" | grep -q "entering /specify" || fail "skill-state-update did not detect taco:specify"
+# Verify state.json was updated
+state_stage=$(jq -r '.stage' "$TMP_DIR/.dev/state.json")
+[[ "$state_stage" == "specify" ]] || fail "state.json not updated to specify (got $state_stage)"
+pass "skill-state-update.sh PreToolUse[Skill] detection"
+
+# --- Test 8c: skill-state-update.sh idempotency ---
+result=$(echo '{"cwd":"'"$TMP_DIR"'","session_id":"smoke-skill","tool_name":"Skill","tool_input":{"skill":"taco:specify","args":"test-feature"}}' | "$ROOT/scripts/skill-state-update.sh")
+echo "$result" | grep -q "entering /specify" && fail "skill-state-update should be idempotent"
+pass "skill-state-update.sh idempotency"
+
+# --- Test 8d: skill-state-update.sh ignores non-pipeline skills ---
+result=$(echo '{"cwd":"'"$TMP_DIR"'","session_id":"smoke-skill","tool_name":"Skill","tool_input":{"skill":"taco:setup-notify","args":""}}' | "$ROOT/scripts/skill-state-update.sh")
+echo "$result" | grep -q "entering" && fail "skill-state-update should ignore non-pipeline skills"
+pass "skill-state-update.sh ignores non-pipeline skills"
+
+# --- Test 8e: skill-state-update.sh without taco: prefix ---
+result=$(echo '{"cwd":"'"$TMP_DIR"'","session_id":"smoke-prefix","tool_name":"Skill","tool_input":{"skill":"plan","args":"test-feature"}}' | "$ROOT/scripts/skill-state-update.sh")
+echo "$result" | grep -q "entering /plan" || fail "skill-state-update should handle skills without prefix"
+pass "skill-state-update.sh handles no-prefix skill names"
+
+# Reset state for subsequent tests
+echo '{"cwd":"'"$TMP_DIR"'","session_id":"smoke-test","prompt":"/brainstorm test-feature"}' | "$ROOT/scripts/state-manager.sh" >/dev/null
+
 # --- Test 9: guard.sh stage enforcement ---
 # brainstorm: .dev/ write allowed
 result=$(echo '{"cwd":"'"$TMP_DIR"'","tool_name":"Write","tool_input":{"file_path":"'"$TMP_DIR"'/.dev/specs/test/idea.md"}}' | "$ROOT/scripts/guard.sh")

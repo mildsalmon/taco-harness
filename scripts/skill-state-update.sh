@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# state-manager.sh — UserPromptSubmit hook
-# Detects pipeline skill invocations and manages .dev/state.json
+# skill-state-update.sh — PreToolUse[Skill] hook
+# Detects pipeline skill invocations from Skill tool input and updates .dev/state.json
+# This is the primary state tracking mechanism — fires whenever the Skill tool is called,
+# regardless of how the user phrased their prompt.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,63 +11,55 @@ source "$SCRIPT_DIR/gate.sh"
 
 INPUT=$(cat)
 
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
-SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty')
-PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty')
+TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty')
 
-# Pipeline stages in order
-STAGES="brainstorm specify plan review-plan implement review-code learn"
-
-# Detect skill invocation from prompt
-detect_stage() {
-  local prompt="$1"
-  for stage in $STAGES; do
-    # Match: /stage, /taco:stage, /plugin:stage (with optional args or end of string)
-    if printf '%s' "$prompt" | grep -qiE "^/(taco:|[a-z-]+:)?${stage}( |$)"; then
-      printf '%s' "$stage"
-      return 0
-    fi
-  done
-  return 1
-}
-
-# Extract feature name from prompt (word after /command)
-extract_feature() {
-  local prompt="$1"
-  printf '%s' "$prompt" | sed -E 's|^/[a-z-]+ +||' | sed 's/ /-/g' | tr '[:upper:]' '[:lower:]' | head -c 64
-}
-
-# Clean stale sessions (>24h)
-clean_stale() {
-  local state_file="$1"
-  if [[ ! -f "$state_file" ]]; then
-    return 0
-  fi
-  local updated_at
-  updated_at=$(jq -r '.updated_at // empty' "$state_file" 2>/dev/null) || return 0
-  if [[ -z "$updated_at" ]]; then
-    return 0
-  fi
-  local now updated_epoch
-  now=$(date +%s)
-  updated_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${updated_at%%.*}" +%s 2>/dev/null) || \
-  updated_epoch=$(date -d "${updated_at}" +%s 2>/dev/null) || return 0
-  local age=$(( now - updated_epoch ))
-  if (( age > 86400 )); then
-    rm -f "$state_file"
-  fi
-}
-
-# Main
-STAGE=$(detect_stage "$PROMPT") || {
-  # Not a pipeline command — pass through
+# Only act on Skill tool invocations
+if [[ "$TOOL_NAME" != "Skill" ]]; then
   printf '{"hookSpecificOutput":{}}\n'
   exit 0
-}
+fi
 
-FEATURE=$(extract_feature "$PROMPT")
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
+SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty')
+
+# Extract skill name from tool input (e.g., "taco:specify" or "specify")
+SKILL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_input.skill // empty')
+# Extract args (feature name)
+SKILL_ARGS=$(printf '%s' "$INPUT" | jq -r '.tool_input.args // empty')
+
+# Strip plugin prefix (taco:specify → specify)
+STAGE="${SKILL_NAME#*:}"
+
+# Pipeline stages
+STAGES="brainstorm specify plan review-plan implement review-code learn"
+
+# Check if this skill is a pipeline stage
+IS_PIPELINE=false
+for s in $STAGES; do
+  if [[ "$STAGE" == "$s" ]]; then
+    IS_PIPELINE=true
+    break
+  fi
+done
+
+if [[ "$IS_PIPELINE" != "true" ]]; then
+  printf '{"hookSpecificOutput":{}}\n'
+  exit 0
+fi
+
+# Extract feature name from args
+FEATURE=$(printf '%s' "$SKILL_ARGS" | sed 's/ /-/g' | tr '[:upper:]' '[:lower:]' | head -c 64)
+
+# If no feature in args, fall back to current state
 if [[ -z "$FEATURE" ]]; then
-  printf '{"hookSpecificOutput":{"additionalContext":"Error: feature name required. Usage: /%s <feature-name>"}}\n' "$STAGE"
+  STATE_FILE="${CWD}/.dev/state.json"
+  if [[ -f "$STATE_FILE" ]]; then
+    FEATURE=$(jq -r '.feature // empty' "$STATE_FILE" 2>/dev/null)
+  fi
+fi
+
+if [[ -z "$FEATURE" ]]; then
+  printf '{"hookSpecificOutput":{"additionalContext":"Error: feature name required for /%s"}}\n' "$STAGE"
   exit 0
 fi
 
@@ -76,21 +70,18 @@ SPEC_DIR="${STATE_DIR}/specs/${FEATURE}"
 # Create directories
 mkdir -p "$SPEC_DIR/reviews"
 
-# Clean stale sessions
-clean_stale "$STATE_FILE"
-
 # Check idempotency — if same session+stage+feature, skip
 if [[ -f "$STATE_FILE" ]]; then
   EXISTING_SESSION=$(jq -r '.session_id // empty' "$STATE_FILE" 2>/dev/null)
   EXISTING_STAGE=$(jq -r '.stage // empty' "$STATE_FILE" 2>/dev/null)
   EXISTING_FEATURE=$(jq -r '.feature // empty' "$STATE_FILE" 2>/dev/null)
   if [[ "$EXISTING_SESSION" == "$SESSION_ID" && "$EXISTING_STAGE" == "$STAGE" && "$EXISTING_FEATURE" == "$FEATURE" ]]; then
-    printf '{"hookSpecificOutput":{"additionalContext":"Pipeline state: already at /%s for %s"}}\n' "$STAGE" "$FEATURE"
+    printf '{"hookSpecificOutput":{}}\n'
     exit 0
   fi
 fi
 
-# Gate checks — verify prerequisites before entering certain stages
+# Gate checks
 GATE_MSG=""
 case "$STAGE" in
   plan)
@@ -131,8 +122,8 @@ mv "$TMPFILE" "$STATE_FILE"
 # Log event
 log_event "$CWD" "stage_enter" "$FEATURE" "entering $STAGE"
 
-CONTEXT="Pipeline state: entering /$STAGE for feature [$FEATURE]. Spec dir: $SPEC_DIR"
+CONTEXT="Pipeline state updated: entering /$STAGE for feature [$FEATURE]."
 if [[ -n "$GATE_MSG" ]]; then
-  CONTEXT="${CONTEXT}. ${GATE_MSG}"
+  CONTEXT="${CONTEXT} ${GATE_MSG}"
 fi
 printf '{"hookSpecificOutput":{"additionalContext":"%s"}}\n' "$CONTEXT"
