@@ -1,6 +1,6 @@
 {
   "name": "taco",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Personal dev harness: brainstorm → specify → plan → review → implement → review → learn",
   "author": { "name": "mildsalmon" }
 }

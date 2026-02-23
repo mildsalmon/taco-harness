@@ -9,7 +9,7 @@
     {
       "name": "taco",
       "description": "Personal dev harness: brainstorm → specify → plan → review → implement → review → learn",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "mildsalmon"
       },
